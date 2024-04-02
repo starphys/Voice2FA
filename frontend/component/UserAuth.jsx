@@ -29,7 +29,7 @@ function UserAuth ({ title = 'Register', endpoint = 'register', actionString = '
     formData.append('username', username)
     formData.append('password', password)
     formData.append('phrase', phrase)
-    formData.append('audio', audioBlob, `${username}-audioBlob.wav`)
+    formData.append('audio', audioBlob, `${username}-audioBlob.webm`)
 
     // Send account data to the server
     try {

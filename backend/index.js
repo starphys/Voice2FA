@@ -1,11 +1,16 @@
 const cors = require('cors')
 const db = require('./db')
+const morgan = require('morgan')
 const express = require('express')
 const fs = require('fs')
 const https = require('https')
 const multer = require('multer')
 const path = require('path')
 const { v4: uuidv4 } = require('uuid')
+
+const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
+const ffmpeg = require('fluent-ffmpeg')
+ffmpeg.setFfmpegPath(ffmpegPath)
 
 const app = express()
 
@@ -28,6 +33,44 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage })
 
+// Middleware for converting audio files
+function convertAudio(req, res, next) {
+  // Check if file is uploaded
+  if (!req.file) {
+    return next(new Error('No file uploaded with request.'))
+  }
+
+  // Determine paths
+  const originalPath = req.file.path
+  const targetFormat = 'wav'
+  const targetPath = originalPath.replace(path.extname(originalPath), `.${targetFormat}`)
+
+  ffmpeg(originalPath)
+    .toFormat(targetFormat)
+    .on('error', (err) => {
+      console.error(`An error occurred during the conversion: ${err.message}`)
+      return next(err)
+    })
+    .on('end', () => {
+      req.file.path = targetPath
+      req.file.originalname = req.file.originalname.replace(path.extname(req.file.originalname), `.${targetFormat}`)
+
+      // Delete the original webm file
+      fs.unlink(originalPath, (err) => {
+        if (err) {
+          console.error(`Failed to delete the original file: ${err}`)
+          return next(err)
+        }
+      })
+
+      next()
+    })
+    .save(targetPath)
+}
+
+// Logging incoming traffic for debugging purposes
+app.use(morgan('dev'))
+
 const PORT = 3443
 
 // SSL certificate paths
@@ -41,13 +84,17 @@ app.get('/', (req, res) => {
   res.send('Hello, HTTPS world!')
 })
 
-app.post('/register', upload.single('audio'), (req, res) => {
+app.post('/register', upload.single('audio'), convertAudio, (req, res) => {
   if (!req.file) {
     return res.status(400).send('Audio file is required.')
   }
 
-  const { username, password } = req.body
-  const audioPath = req.file.path // Path where the audio file is saved
+  // TODO: salt and hash passwords
+  const { username, password, phrase } = req.body
+  const audioPath = req.file.path
+
+  // Compare speech to text
+
 
   // Attempt to insert user credentials into the database
   const insertUser = 'INSERT INTO users (username, password, audioPath) VALUES (?, ?, ?)'
@@ -56,14 +103,50 @@ app.post('/register', upload.single('audio'), (req, res) => {
       fs.rm(audioPath, (rmErr) => {
         if (rmErr) {
           console.error(`Failed to delete audio file: ${audioPath}`, rmErr)
-          return res.status(500).send('Failed to clean up audio file.')
+        } else {
+          console.log(`DB error: ${err.message}. Cleaned up audio file.`)
         }
-        console.log(`Duplicate username or DB error: ${err.message}. Cleaned up audio file.`)
-        return res.status(409).send('Username already taken or registration failed.')
+        return res.status(403).send('Registration failed.')
       })
     } else {
       res.status(201).send({ userId: this.lastID, message: 'User registered successfully!' })
     }
+  })
+})
+
+app.post('/login', upload.single('audio'), convertAudio, (req, res) => {
+  if (!req.file) {
+    return res.status(400).send('Audio file is required.')
+  }
+
+  const { username, password, phrase } = req.body
+  const audioPath = req.file.path
+
+  // Compare speech to text
+
+  // Validate login and retrieve audioPath
+  const retrieveUser = 'SELECT id, password, audioPath FROM users WHERE username=?'
+  db.get(retrieveUser, [username], function (err, row) {
+    if (err) {
+      fs.rm(audioPath, (rmErr) => {
+        if (rmErr) {
+          console.error(`Failed to delete audio file: ${audioPath}`, rmErr)
+          return res.status(500).send('Failed to clean up audio file.')
+        }
+        console.log(`DB error: ${err.message}. Cleaned up audio file.`)
+        return res.status(403).send('Login failed.')
+      })
+    }
+
+    // TODO: replace pwd check with hash/salt
+    if (!row || password !== row.password) {
+      return res.status(403).send('Login failed.')
+    }
+
+    // Compare voice auth
+
+
+    return res.status(200).send({ userId: row.id, message: 'User authenticated successfully!' })
   })
 })
 
