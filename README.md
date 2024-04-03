@@ -6,28 +6,28 @@ Download and install a git-enabled terminal, such as git bash: https://git-scm.c
 Download and install Google Cloud CLI here: https://cloud.google.com/sdk/docs/install. Follow the installation instructions, then setup a service account for Google Speech-To-Text and follow the appropriate authentication steps on the development machine.
 
 # Installation
-In a git-enabled terminal, clone the repository and install the dependencies:
-`git clone https://github.com/starphys/Voice2FA.git`
-`cd frontend`
-`npm install`
-`cd ../backend`
-`npm install`
-To generate and self-sign certificates for HTTPS:
-`mkdir certificate`
-`cd certificate`
-`openssl genrsa -out key.pem`
-`openssl req -new -key key.pem -out csr.pem`
-`openssl x509 -req -days 9999 -in csr.pem -signkey key.pem -out cert.pem`
-`rm csr.pem`
+In a git-enabled terminal, clone the repository and install the dependencies:  
+`git clone https://github.com/starphys/Voice2FA.git`  
+`cd frontend`  
+`npm install`  
+`cd ../backend`  
+`npm install`  
+To generate and self-sign certificates for HTTPS:  
+`mkdir certificate`  
+`cd certificate`  
+`openssl genrsa -out key.pem`  
+`openssl req -new -key key.pem -out csr.pem`  
+`openssl x509 -req -days 9999 -in csr.pem -signkey key.pem -out cert.pem`  
+`rm csr.pem`  
 
 # Usage
-This is a prototype, and is intended to be run as a standalone project. 
-To run the backend, in a separate terminal:
-`cd backend`
-`npm start`
-Launch a browser and navigate to the listed IP address. Because the server's certificates are self-signed, you need to manually navigate to the server's home page for requests from the frontend to be processed correctly. 
+This is a prototype, and is intended to be run as a standalone project.  
+To run the backend, in a separate terminal:  
+`cd backend`  
+`npm start`  
+Launch a browser and navigate to the listed IP address. Because the server's certificates are self-signed, you need to manually navigate to the server's home page for requests from the frontend to be processed correctly.   
 
-To run the frontend, in a separate terminal:
-`cd frontend`
-`npm run dev`
+To run the frontend, in a separate terminal:  
+`cd frontend`  
+`npm run dev`  
 Open the listed IP address in the same browser you used for the previous step.
