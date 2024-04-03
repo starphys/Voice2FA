@@ -8,6 +8,8 @@ const multer = require('multer')
 const path = require('path')
 const { v4: uuidv4 } = require('uuid')
 
+const speech = require('@google-cloud/speech')
+
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
 const ffmpeg = require('fluent-ffmpeg')
 ffmpeg.setFfmpegPath(ffmpegPath)
@@ -34,7 +36,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage })
 
 // Middleware for converting audio files
-function convertAudio(req, res, next) {
+function convertAudio (req, res, next) {
   // Check if file is uploaded
   if (!req.file) {
     return next(new Error('No file uploaded with request.'))
@@ -71,6 +73,35 @@ function convertAudio(req, res, next) {
 // Logging incoming traffic for debugging purposes
 app.use(morgan('dev'))
 
+// Speech to text client
+const client = new speech.SpeechClient()
+
+async function transcribeSpeech (filepath) {
+  const filename = filepath
+  const encoding = 'Encoding of the audio file, e.g. LINEAR16'
+  const languageCode = 'en-US'
+
+  const config = {
+    encoding,
+    languageCode
+  }
+
+  const audio = {
+    content: fs.readFileSync(filename).toString('base64')
+  }
+
+  const request = {
+    config,
+    audio
+  }
+
+  // Detects speech in the audio file
+  const [response] = await client.recognize(request)
+  return response.results
+    .map(result => result.alternatives[0].transcript)
+    .join('\n')
+}
+
 const PORT = 3443
 
 // SSL certificate paths
@@ -84,7 +115,7 @@ app.get('/', (req, res) => {
   res.send('Hello, HTTPS world!')
 })
 
-app.post('/register', upload.single('audio'), convertAudio, (req, res) => {
+app.post('/register', upload.single('audio'), convertAudio, async (req, res) => {
   if (!req.file) {
     return res.status(400).send('Audio file is required.')
   }
@@ -94,7 +125,15 @@ app.post('/register', upload.single('audio'), convertAudio, (req, res) => {
   const audioPath = req.file.path
 
   // Compare speech to text
-
+  const transcript = (await transcribeSpeech(audioPath)).toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '')
+  const testPhrase = phrase.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '')
+  console.log(testPhrase,
+    transcript,
+    testPhrase === transcript
+  )
+  if (testPhrase !== transcript) {
+    return res.status(403).send('Registration failed.')
+  }
 
   // Attempt to insert user credentials into the database
   const insertUser = 'INSERT INTO users (username, password, audioPath) VALUES (?, ?, ?)'
@@ -114,7 +153,7 @@ app.post('/register', upload.single('audio'), convertAudio, (req, res) => {
   })
 })
 
-app.post('/login', upload.single('audio'), convertAudio, (req, res) => {
+app.post('/login', upload.single('audio'), convertAudio, async (req, res) => {
   if (!req.file) {
     return res.status(400).send('Audio file is required.')
   }
@@ -123,6 +162,16 @@ app.post('/login', upload.single('audio'), convertAudio, (req, res) => {
   const audioPath = req.file.path
 
   // Compare speech to text
+  const transcript = (await transcribeSpeech(audioPath)).toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '')
+  const testPhrase = phrase.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '')
+  console.log(testPhrase,
+    transcript,
+    testPhrase === transcript
+  )
+
+  if (testPhrase !== transcript) {
+    return res.status(403).send('Login failed.')
+  }
 
   // Validate login and retrieve audioPath
   const retrieveUser = 'SELECT id, password, audioPath FROM users WHERE username=?'
@@ -139,12 +188,11 @@ app.post('/login', upload.single('audio'), convertAudio, (req, res) => {
     }
 
     // TODO: replace pwd check with hash/salt
-    if (!row || password !== row.password) {
+    else if (!row || password !== row.password) {
       return res.status(403).send('Login failed.')
     }
 
     // Compare voice auth
-
 
     return res.status(200).send({ userId: row.id, message: 'User authenticated successfully!' })
   })

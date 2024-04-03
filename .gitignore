@@ -2,6 +2,7 @@
 **/certificate
 **users.db
 **/audio
+**/keys
 
 # Logs
 logs
