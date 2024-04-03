@@ -3,6 +3,7 @@
 **users.db
 **/audio
 **/keys
+**.env
 
 # Logs
 logs

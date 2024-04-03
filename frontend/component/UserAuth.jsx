@@ -9,7 +9,13 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import CustomAudioRecorder from '../component/CustomAudioRecorder'
 
-function UserAuth ({ title = 'Register', endpoint = 'register', actionString = 'Registration', phrase = 'The quick brown fox jumps over the lazy dog.', loginFunction = () => {} }) {
+function UserAuth ({
+  title = 'Register',
+  endpoint = 'register',
+  actionString = 'Registration',
+  phrase = 'Keep your face always toward the sunshine, and shadows will fall behind you.',
+  loginFunction = () => {}
+}) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [audioBlob, setAudioBlob] = useState(null)

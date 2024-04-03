@@ -1,17 +1,21 @@
-const cors = require('cors')
-const db = require('./db')
-const morgan = require('morgan')
-const express = require('express')
-const fs = require('fs')
-const https = require('https')
-const multer = require('multer')
-const path = require('path')
-const { v4: uuidv4 } = require('uuid')
+import 'dotenv/config'
 
-const speech = require('@google-cloud/speech')
+import speech from '@google-cloud/speech'
 
-const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
-const ffmpeg = require('fluent-ffmpeg')
+import axios from 'axios'
+import cors from 'cors'
+import dbPromise from './db/index.js'
+import express from 'express'
+import { path as ffmpegPath } from '@ffmpeg-installer/ffmpeg'
+import ffmpeg from 'fluent-ffmpeg'
+import FormData from 'form-data'
+import fs from 'fs'
+import https from 'https'
+import path from 'path'
+import morgan from 'morgan'
+import multer from 'multer'
+import { v4 as uuidv4 } from 'uuid'
+
 ffmpeg.setFfmpegPath(ffmpegPath)
 
 const app = express()
@@ -102,12 +106,40 @@ async function transcribeSpeech (filepath) {
     .join('\n')
 }
 
+async function verifyVoiceSignature (audioPath1, audioPath2) {
+  const data = new FormData()
+  data.append('sound1', fs.createReadStream(audioPath1))
+  data.append('sound2', fs.createReadStream(audioPath2))
+
+  const verificationUrl = 'https://speaker-verification1.p.rapidapi.com/Verification'
+
+  try {
+    console.log('Calling voice signature verification')
+    const response = await axios.post(verificationUrl, data, {
+      headers: {
+        ...data.getHeaders(),
+        'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
+        'X-RapidAPI-Host': 'speaker-verification1.p.rapidapi.com'
+      }
+    })
+
+    const result = response.data
+
+    console.log(result, 'returning', result.data.resultIndex > 0)
+    console.log(result.data)
+
+    return result.data.resultIndex > 0
+  } catch (error) {
+    console.error(error.response ? error.response.data : error.message)
+  }
+}
+
 const PORT = 3443
 
 // SSL certificate paths
 const sslOptions = {
-  key: fs.readFileSync(path.join(__dirname, 'certificate/key.pem')),
-  cert: fs.readFileSync(path.join(__dirname, 'certificate/cert.pem'))
+  key: fs.readFileSync('certificate/key.pem'),
+  cert: fs.readFileSync('certificate/cert.pem')
 }
 
 // Default route
@@ -117,7 +149,7 @@ app.get('/', (req, res) => {
 
 app.post('/register', upload.single('audio'), convertAudio, async (req, res) => {
   if (!req.file) {
-    return res.status(400).send('Audio file is required.')
+    return res.status(400).send({ message: 'Audio file is required.' })
   }
 
   // TODO: salt and hash passwords
@@ -127,35 +159,33 @@ app.post('/register', upload.single('audio'), convertAudio, async (req, res) => 
   // Compare speech to text
   const transcript = (await transcribeSpeech(audioPath)).toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '')
   const testPhrase = phrase.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '')
-  console.log(testPhrase,
-    transcript,
-    testPhrase === transcript
-  )
+  console.log(transcript, testPhrase, transcript === testPhrase)
   if (testPhrase !== transcript) {
-    return res.status(403).send('Registration failed.')
+    return res.status(403).send({ message: 'Registration failed.' })
   }
 
   // Attempt to insert user credentials into the database
   const insertUser = 'INSERT INTO users (username, password, audioPath) VALUES (?, ?, ?)'
-  db.run(insertUser, [username, password, audioPath], function (err) {
-    if (err) {
-      fs.rm(audioPath, (rmErr) => {
-        if (rmErr) {
-          console.error(`Failed to delete audio file: ${audioPath}`, rmErr)
-        } else {
-          console.log(`DB error: ${err.message}. Cleaned up audio file.`)
-        }
-        return res.status(403).send('Registration failed.')
-      })
-    } else {
-      res.status(201).send({ userId: this.lastID, message: 'User registered successfully!' })
+  try {
+    const db = await dbPromise
+    const result = await db.run(insertUser, [username, password, audioPath])
+    return res.status(201).send({ userId: result.lastID, message: 'User registered successfully!' })
+  } catch (err) {
+    console.error(`Failed to insert user: ${err}`)
+
+    try {
+      await fs.promises.rm(audioPath)
+      return res.status(403).send({ message: 'Registration failed.' })
+    } catch (rmErr) {
+      console.error(`Failed to delete audio file: ${audioPath}`, rmErr)
+      return res.status(500).send({ message: 'Internal server error' })
     }
-  })
+  }
 })
 
 app.post('/login', upload.single('audio'), convertAudio, async (req, res) => {
   if (!req.file) {
-    return res.status(400).send('Audio file is required.')
+    return res.status(400).send({ message: 'Audio file is required.' })
   }
 
   const { username, password, phrase } = req.body
@@ -164,38 +194,30 @@ app.post('/login', upload.single('audio'), convertAudio, async (req, res) => {
   // Compare speech to text
   const transcript = (await transcribeSpeech(audioPath)).toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '')
   const testPhrase = phrase.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '')
-  console.log(testPhrase,
-    transcript,
-    testPhrase === transcript
-  )
+  console.log(transcript, testPhrase, transcript === testPhrase)
 
   if (testPhrase !== transcript) {
-    return res.status(403).send('Login failed.')
+    return res.status(403).send({ message: 'Login failed.' })
   }
 
   // Validate login and retrieve audioPath
   const retrieveUser = 'SELECT id, password, audioPath FROM users WHERE username=?'
-  db.get(retrieveUser, [username], function (err, row) {
-    if (err) {
-      fs.rm(audioPath, (rmErr) => {
-        if (rmErr) {
-          console.error(`Failed to delete audio file: ${audioPath}`, rmErr)
-          return res.status(500).send('Failed to clean up audio file.')
-        }
-        console.log(`DB error: ${err.message}. Cleaned up audio file.`)
-        return res.status(403).send('Login failed.')
-      })
-    }
+  try {
+    const db = await dbPromise
+    const user = await db.get(retrieveUser, username)
 
     // TODO: replace pwd check with hash/salt
-    else if (!row || password !== row.password) {
-      return res.status(403).send('Login failed.')
-    }
 
     // Compare voice auth
+    if (user && password === user.password && (await verifyVoiceSignature(user.audioPath, audioPath))) {
+      return res.status(200).send({ userId: user.id, message: 'User authenticated successfully!' })
+    }
 
-    return res.status(200).send({ userId: row.id, message: 'User authenticated successfully!' })
-  })
+    return res.status(403).send({ message: 'Login failed.' })
+  } catch (err) {
+    console.error(`Login error: ${err}`)
+    res.status(500).send({ message: 'Internal server error' })
+  }
 })
 
 // Create an HTTPS server

@@ -1,9 +1,10 @@
-Voice2FA is a prototype of a two-factor authentication that employs a username and password as the first factor and a voice recording as the second factor. By generating short phrases at login and validating that both the correct phrase was read and the audio sample matches the voice signature of samples on record, this system ensures secure user authentication.
+Voice2FA is a prototype of a two-factor authentication system that employs a username and password as the first factor and a voice recording as the second factor. By generating short phrases at login and validating that both the correct phrase was read and the audio sample matches the voice signature of samples on record, this system ensures secure user authentication.
 
 # Prerequisites
-Download and install the LTS version of Node.js here: https://nodejs.org/en
-Download and install a git-enabled terminal, such as git bash: https://git-scm.com/downloads
-Download and install Google Cloud CLI here: https://cloud.google.com/sdk/docs/install. Follow the installation instructions, then setup a service account for Google Speech-To-Text and follow the appropriate authentication steps on the development machine.
+Download and install the LTS version of Node.js here: https://nodejs.org/en  
+Download and install a git-enabled terminal, such as git bash: https://git-scm.com/downloads  
+Download and install Google Cloud CLI here: https://cloud.google.com/sdk/docs/install. Follow the installation instructions, then setup a service account for Google Speech-To-Text and follow the appropriate authentication steps on the development machine.  
+Signup for an API key for PresentID's Speaker Verification service here: https://rapidapi.com/PresentID/api/speaker-verification1  
 
 # Installation
 In a git-enabled terminal, clone the repository and install the dependencies:  
@@ -12,13 +13,16 @@ In a git-enabled terminal, clone the repository and install the dependencies:
 `npm install`  
 `cd ../backend`  
 `npm install`  
-To generate and self-sign certificates for HTTPS:  
+To generate and self-sign certificates for HTTPS under /backend/certificate:  
 `mkdir certificate`  
 `cd certificate`  
 `openssl genrsa -out key.pem`  
 `openssl req -new -key key.pem -out csr.pem`  
 `openssl x509 -req -days 9999 -in csr.pem -signkey key.pem -out cert.pem`  
 `rm csr.pem`  
+Place your API key for Speaker Verification in a .env file under /backend using this key=value pair:  
+`RAPIDAPI_KEY=YOUR-API-KEY`
+
 
 # Usage
 This is a prototype, and is intended to be run as a standalone project.  
